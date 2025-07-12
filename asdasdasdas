@@ -446,3 +446,141 @@ local function duplicatePet()
 end
 
 button.MouseButton1Click:Connect(duplicatePet)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local player = Players.LocalPlayer
+local mouse = player:GetMouse()
+
+-- Folder to hold all placed pets
+local placedFolder = workspace:FindFirstChild("PlacedPets")
+if not placedFolder then
+    placedFolder = Instance.new("Folder")
+    placedFolder.Name = "PlacedPets"
+    placedFolder.Parent = workspace
+end
+
+-- Replace this with your duplicated pet instance
+local duplicatedPet = nil  -- e.g. set this externally before calling placePet()
+
+-- Function to setup pet behavior: wandering, following, show stats
+local function setupPetBehavior(pet)
+    if not pet.PrimaryPart then return end
+
+    -- Add ClickDetector to show stats on click
+    local clickDetector = pet.PrimaryPart:FindFirstChildOfClass("ClickDetector")
+    if not clickDetector then
+        clickDetector = Instance.new("ClickDetector")
+        clickDetector.MaxActivationDistance = 20
+        clickDetector.Parent = pet.PrimaryPart
+    end
+
+    -- Create a BillboardGui to display stats (age and weight)
+    local age = pet:FindFirstChild("Age")
+    local weight = pet:FindFirstChild("Weight")
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "StatsGui"
+    billboard.AlwaysOnTop = true
+    billboard.Size = UDim2.new(0, 150, 0, 40)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.Enabled = false
+    billboard.Parent = pet.PrimaryPart
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.new(1, 1, 1)
+    label.Font = Enum.Font.SourceSansBold
+    label.TextSize = 14
+    label.Text = "Age: "..(age and tostring(age.Value) or "N/A").." | Weight: "..(weight and tostring(weight.Value) or "N/A")
+    label.Parent = billboard
+
+    clickDetector.MouseClick:Connect(function()
+        billboard.Enabled = not billboard.Enabled
+    end)
+
+    -- Pet wandering and following logic
+    local function moveTo(targetPos)
+        if not pet.PrimaryPart then return end
+
+        local bodyVelocity = Instance.new("BodyVelocity")
+        bodyVelocity.MaxForce = Vector3.new(1e5, 0, 1e5)
+        local direction = (targetPos - pet.PrimaryPart.Position)
+        if direction.Magnitude > 0 then
+            bodyVelocity.Velocity = direction.Unit * 8
+        else
+            bodyVelocity.Velocity = Vector3.new(0,0,0)
+        end
+        bodyVelocity.Parent = pet.PrimaryPart
+
+        local conn
+        conn = RunService.Stepped:Connect(function()
+            if not pet.PrimaryPart or (pet.PrimaryPart.Position - targetPos).Magnitude < 2 then
+                bodyVelocity:Destroy()
+                conn:Disconnect()
+            end
+        end)
+    end
+
+    local wanderRadius = 10
+    local followDistance = 20
+
+    local function getRandomPosition()
+        local origin = pet.PrimaryPart.Position
+        local x = math.random(-wanderRadius, wanderRadius)
+        local z = math.random(-wanderRadius, wanderRadius)
+        return origin + Vector3.new(x, 0, z)
+    end
+
+    spawn(function()
+        while pet and pet.PrimaryPart and pet.Parent do
+            local char = player.Character
+            if char then
+                local humanoidRoot = char:FindFirstChild("HumanoidRootPart")
+                if humanoidRoot then
+                    local dist = (humanoidRoot.Position - pet.PrimaryPart.Position).Magnitude
+                    if dist < followDistance then
+                        moveTo(humanoidRoot.Position + Vector3.new(0, 0, -3))
+                    else
+                        moveTo(getRandomPosition())
+                    end
+                end
+            end
+            wait(math.random(3, 6))
+        end
+    end)
+end
+
+-- Function to let player click somewhere in garden to place the pet
+local function placePet(petModel)
+    if not petModel or not petModel.PrimaryPart then
+        warn("No valid pet model to place!")
+        return
+    end
+
+    print("Click on the ground to place your pet.")
+
+    local placing = true
+    local connection
+
+    connection = mouse.Button1Down:Connect(function()
+        if placing then
+            local hitPos = mouse.Hit.Position
+            petModel.Parent = placedFolder
+            local heightOffset = petModel.PrimaryPart.Size.Y / 2
+            petModel:SetPrimaryPartCFrame(CFrame.new(hitPos + Vector3.new(0, heightOffset, 0)))
+            petModel.PrimaryPart.Anchored = false
+            setupPetBehavior(petModel)
+            print("Pet placed!")
+            placing = false
+            connection:Disconnect()
+        end
+    end)
+end
+
+--[[
+-- Example usage:
+-- When you have a duplicated pet model ready, set duplicatedPet = <your pet model> and call:
+placePet(duplicatedPet)
+--]]
+
